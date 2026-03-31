@@ -25,7 +25,7 @@ import app.main as main_app
 from app.config import get_settings
 from app.database.database import get_db
 from app.ml_model.ml_model import MockLLM
-from app.models.models import APIKey, ChatHistory, User
+from app.models.models import APIKey, ChatHistory, ChatSession, User
 from app.schemas.schemas import (
     APIKeyCreatedResponse,
     APIKeyCreateRequest,
@@ -33,6 +33,8 @@ from app.schemas.schemas import (
     ChatHistoryResponse,
     ChatRequest,
     ChatResponse,
+    ChatSessionCreateRequest,
+    ChatSessionResponse,
     HealthResponse,
     UserCreateRequest,
     UserResponse,
@@ -98,6 +100,19 @@ async def get_user_or_404(
         )
     return user
 
+async def get_session_or_404(
+    user_id: UUID,
+    session_id: int,
+    db: AsyncSession,
+) -> ChatSession:
+    query = select(ChatSession).where(ChatSession.id == session_id, ChatSession.user_id == user_id)
+    session = await db.execute(query).scalar_one_or_none()
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session was not found.",
+        )
+    return session
 
 def ensure_user_access(user_id: UUID, api_key: APIKey) -> None:
     if api_key.owner_id != user_id:
@@ -265,6 +280,8 @@ async def chat(
 
     if len(user_prompt) > settings.MAX_PROMPT_LENGTH:
         raise main_app.ContextLengthExceeded(settings.MAX_PROMPT_LENGTH)
+    
+    session = await get_session_or_404(api_key.owner_id, request.session_id, db)
 
     response_text = await model.generate(
         prompt=user_prompt,
@@ -273,6 +290,7 @@ async def chat(
     )
 
     chat_entry = ChatHistory(
+        session_id=session.id,
         user_id=api_key.owner_id,
         api_key_id=api_key.id,
         messages=[message.model_dump() for message in request.messages],
@@ -296,6 +314,7 @@ async def chat(
 
     return ChatResponse(
         id=chat_entry.id,
+        session_id=chat_entry.session_id,
         user_id=api_key.owner_id,
         response=response_text,
         temperature=chat_entry.temperature,
@@ -316,6 +335,8 @@ async def chat_streaming(
 
     if len(user_prompt) > settings.MAX_PROMPT_LENGTH:
         raise main_app.ContextLengthExceeded(settings.MAX_PROMPT_LENGTH)
+    
+    session = await get_session_or_404(api_key.owner_id, request.session_id, db)
 
     async def stream_response():
         collected_tokens: list[str] = []
@@ -328,6 +349,7 @@ async def chat_streaming(
             yield token
 
         chat_entry = ChatHistory(
+            session_id=session.id,
             user_id=api_key.owner_id,
             api_key_id=api_key.id,
             messages=[message.model_dump() for message in request.messages],
@@ -344,3 +366,65 @@ async def chat_streaming(
         schedule_chat_audit(chat_entry.id, api_key.owner_id, streamed=True)
 
     return StreamingResponse(stream_response(), media_type="text/plain")
+
+@router.post(
+    "/users/{user_id}/sessions",
+    response_model=ChatSessionResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def create_chat_session(
+    user_id: UUID,
+    request: ChatSessionCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    api_key: APIKey = Depends(get_current_api_key),
+) -> ChatSession:
+    ensure_user_access(user_id, api_key)
+    await get_user_or_404(user_id, db)
+
+    session = ChatSession(
+        user_id=user_id,
+        title=request.session_name,
+    )
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+@router.get(
+    "/users/{user_id}/sessions",
+    response_model=list[ChatSessionResponse],
+)
+async def list_chat_sessions(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    api_key: APIKey = Depends(get_current_api_key),
+) -> list[ChatSession]:
+    ensure_user_access(user_id, api_key)
+    await get_user_or_404(user_id, db)
+
+    query = (
+        select(ChatSession)
+        .where(ChatSession.user_id == user_id)
+        .order_by(desc(ChatSession.created_at))
+    )
+    return list((await db.execute(query)).scalars().all())
+
+@router.get(
+    "/users/{user_id}/sessions/{session_id}",
+    response_model=list[ChatHistoryResponse],
+)
+async def get_chat_session_history(
+    user_id: UUID,
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    api_key: APIKey = Depends(get_current_api_key),
+) -> list[ChatHistory]:
+    ensure_user_access(user_id, api_key)
+    await get_session_or_404(user_id, session_id, db)
+
+    query = (
+        select(ChatHistory)
+        .where(ChatHistory.session_id == session_id)
+        .order_by(ChatHistory.created_at)
+    )
+    return list((await db.execute(query)).scalars().all())

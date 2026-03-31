@@ -1,0 +1,5 @@
+sqlalchemy
+alembic
+pydantic
+pydantic-settings
+asyncpg
