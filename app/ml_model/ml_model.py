@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -8,7 +9,8 @@ logger = logging.getLogger(__name__)
 class MockLLM:
     model_name = "MockLLM"
 
-    def __init__(self) -> None:
+    def __init__(self, cache_dir: str) -> None:
+        Path(cache_dir).mkdir(parents=True, exist_ok=True)
         logger.info("[Weights are loading].")
         time.sleep(0.2)
         logger.info("[Weights are loaded].")

@@ -14,11 +14,15 @@ class Settings(BaseSettings):
     )
 
     DATABASE_URL: str = Field(description="Async DB connection string.")
+    DATABASE_ECHO: bool = Field(default=False)
     APP_TITLE: str = Field(default="DEMO API")
     MAX_PROMPT_LENGTH: int = Field(default=5000, ge=1)
     API_KEY_HEADER_NAME: str = Field(default="X-API-Key")
+    MODEL_CACHE_DIR: str = Field(default=".cache/model-cache")
     CORS_ALLOW_ORIGINS: list[str] = Field(
         default_factory=lambda: [
+            "http://localhost",
+            "http://127.0.0.1",
             "http://localhost:3000",
             "http://127.0.0.1:3000",
         ]

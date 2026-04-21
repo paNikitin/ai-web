@@ -17,7 +17,7 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import desc, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -174,7 +174,21 @@ def derive_session_title(user_prompt: str) -> str:
 
 @router.get("/health", response_model=HealthResponse, tags=["system"])
 async def health(db: AsyncSession = Depends(get_db)) -> HealthResponse:
-    await db.execute(text("SELECT 1"))
+    try:
+        await db.execute(text("SELECT 1"))
+    except SQLAlchemyError as exc:
+        logger.exception("Health check failed on database ping.")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database is unavailable.",
+        ) from exc
+
+    if "ml_model" not in main_app.ml_model_state:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ML model is not ready.",
+        )
+
     return HealthResponse(
         status="ok",
         model_loaded="ml_model" in main_app.ml_model_state,

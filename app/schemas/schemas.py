@@ -19,8 +19,15 @@ class APIResponseModel(BaseModel):
 
 
 class Message(BaseModel):
-    message: str = Field(min_length=1)
-    role: Literal["system", "user", "assistant"]
+    message: str = Field(
+        min_length=1,
+        description="Chat message text.",
+        examples=["Say hello to the user."],
+    )
+    role: Literal["system", "user", "assistant"] = Field(
+        description="Role of the message author.",
+        examples=["user"],
+    )
 
     @field_validator("message")
     @classmethod
@@ -32,10 +39,34 @@ class Message(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    session_id: int = Field(ge=1)
-    messages: list[Message]
-    temperature: float = Field(default=0.8, le=2.0, ge=0.0)
-    max_tokens: int = Field(default=100, le=10000, ge=10)
+    session_id: int = Field(
+        ge=1,
+        description="Existing chat session identifier.",
+        examples=[1],
+    )
+    messages: list[Message] = Field(
+        description="Ordered chat context ending with the user prompt.",
+        examples=[
+            [
+                {"role": "system", "message": "You are helpful."},
+                {"role": "user", "message": "Tell me a joke."},
+            ]
+        ],
+    )
+    temperature: float = Field(
+        default=0.8,
+        le=2.0,
+        ge=0.0,
+        description="Sampling temperature for the model response.",
+        examples=[0.7],
+    )
+    max_tokens: int = Field(
+        default=100,
+        le=10000,
+        ge=10,
+        description="Upper bound for the generated token count.",
+        examples=[120],
+    )
 
     @model_validator(mode="after")
     def validate_messages(self) -> "ChatRequest":
@@ -54,8 +85,18 @@ class ChatRequest(BaseModel):
 
 
 class UserCreateRequest(BaseModel):
-    username: str = Field(min_length=3, max_length=50)
-    email: str = Field(min_length=5, max_length=50)
+    username: str = Field(
+        min_length=3,
+        max_length=50,
+        description="Unique username.",
+        examples=["demo_user"],
+    )
+    email: str = Field(
+        min_length=5,
+        max_length=50,
+        description="User email address.",
+        examples=["demo@example.com"],
+    )
 
     @field_validator("username")
     @classmethod
@@ -82,7 +123,12 @@ class UserResponse(APIResponseModel):
 
 
 class APIKeyCreateRequest(BaseModel):
-    name: str = Field(min_length=3, max_length=100)
+    name: str = Field(
+        min_length=3,
+        max_length=100,
+        description="Human-readable API key name.",
+        examples=["primary-key"],
+    )
 
     @field_validator("name")
     @classmethod
@@ -105,7 +151,13 @@ class APIKeyCreatedResponse(APIKeyResponse):
 
 
 class ChatSessionCreateRequest(BaseModel):
-    title: str = Field(default="New chat", min_length=1, max_length=120)
+    title: str = Field(
+        default="New chat",
+        min_length=1,
+        max_length=120,
+        description="Human-readable chat session title.",
+        examples=["Weekly demo"],
+    )
 
     @field_validator("title")
     @classmethod

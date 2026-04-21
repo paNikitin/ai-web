@@ -35,3 +35,12 @@ curl -N 'http://localhost:8001/chat/stream' \
     ]
 }
 '
+
+
+
+docker run -d -p 5433:5432 -e POSTGRES_PASSWORD=root -e POSTGRES_DB=ai_web_db -e POSTGRES_USER=postgres postgres:16.9-alpine
+
+
+uvicorn app.main:app --port 8020 --reload
+
+streamlit run streamlit_app/app.py
